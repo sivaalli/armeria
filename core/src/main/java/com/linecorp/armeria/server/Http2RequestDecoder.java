@@ -27,10 +27,12 @@ import javax.annotation.Nullable;
 
 import com.linecorp.armeria.common.ClosedSessionException;
 import com.linecorp.armeria.common.ContentTooLargeException;
+import com.linecorp.armeria.common.DefaultPingHandler;
 import com.linecorp.armeria.common.HttpHeaderNames;
 import com.linecorp.armeria.common.HttpMethod;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.common.MediaType;
+import com.linecorp.armeria.common.PingHandler;
 import com.linecorp.armeria.internal.ArmeriaHttpUtil;
 import com.linecorp.armeria.internal.Http2GoAwayHandler;
 import com.linecorp.armeria.internal.InboundTrafficController;
@@ -95,6 +97,7 @@ final class Http2RequestDecoder extends Http2EventAdapter {
     @Override
     public void onSettingsRead(ChannelHandlerContext ctx, Http2Settings settings) {
         ctx.fireChannelRead(settings);
+        pingHandler.start(ctx);
     }
 
     @Override
@@ -313,6 +316,11 @@ final class Http2RequestDecoder extends Http2EventAdapter {
     @Override
     public void onGoAwaySent(int lastStreamId, long errorCode, ByteBuf debugData) {
         goAwayHandler.onGoAwaySent(channel, lastStreamId, errorCode, debugData);
+        try {
+            pingHandler.close();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     @Override

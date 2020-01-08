@@ -14,9 +14,10 @@
  * under the License.
  */
 
-package com.linecorp.armeria.server;
+package com.linecorp.armeria.common;
 
 import java.util.Random;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
@@ -24,21 +25,26 @@ import org.slf4j.LoggerFactory;
 
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelPromise;
 import io.netty.channel.EventLoop;
 import io.netty.handler.codec.http2.DefaultHttp2PingFrame;
 import io.netty.handler.codec.http2.Http2Exception;
 import io.netty.handler.codec.http2.Http2FrameWriter;
 import io.netty.handler.codec.http2.Http2PingFrame;
 
-class DefaultPingHandler implements PingHandler {
+/**
+ * class to provides todo.
+ */
+public class DefaultPingHandler implements PingHandler {
 
     private static final Logger logger = LoggerFactory.getLogger(DefaultPingHandler.class);
     private final Http2FrameWriter frameWriter;
     final Http2PingRequestResponsePair pair = new Http2PingRequestResponsePair();
-    final Random random = new Random();
+    private Future<?> scheduledPingFuture;
 
-    DefaultPingHandler(final Http2FrameWriter frameWriter) {
+    /**
+     * asdasd.
+     */
+    public DefaultPingHandler(final Http2FrameWriter frameWriter) {
         this.frameWriter = frameWriter;
     }
 
@@ -46,19 +52,18 @@ class DefaultPingHandler implements PingHandler {
     public void start(ChannelHandlerContext ctx) {
         final Channel channel = ctx.channel();
         final EventLoop eventLoop = channel.eventLoop();
-        final ChannelPromise pingWritePromise = ctx.newPromise();
-        final Http2PingFrame newPingFrame = getNewPingFrame();
-        pingWritePromise.addListener(future -> pair.setRequestFrame(newPingFrame));
 
-        eventLoop.scheduleAtFixedRate(
-                () -> frameWriter.writePing(ctx, newPingFrame.ack(), newPingFrame.content(), pingWritePromise),
-                1000,5000, TimeUnit.MILLISECONDS);
+        scheduledPingFuture = eventLoop.scheduleWithFixedDelay(new PingWriterRunnable(ctx),
+                                      1000,
+                                      5000,
+                                      TimeUnit.MILLISECONDS);
+        logger.trace("Started DefaultPingHandler");
     }
 
     @Override
     public void onPingAckRead(final ChannelHandlerContext ctx, final long data) throws Http2Exception {
         pair.setResponseFrame(new DefaultHttp2PingFrame(data, true));
-        logger.trace("PING ACK received");
+        logger.trace("Received PING(ACK=1) for channel: {}", ctx.channel().id());
     }
 
     @Override
@@ -69,7 +74,35 @@ class DefaultPingHandler implements PingHandler {
         ));
     }
 
-    public Http2PingFrame getNewPingFrame() {
-        return new DefaultHttp2PingFrame(random.nextLong());
+    @Override
+    public void close() {
+        scheduledPingFuture.cancel(false);
+    }
+
+    class PingWriterRunnable implements Runnable {
+
+        private final ChannelHandlerContext ctx;
+        private final Random random = new Random();
+
+        PingWriterRunnable(ChannelHandlerContext ctx) {
+            this.ctx = ctx;
+        }
+
+        @Override
+        public void run() {
+            logger.trace("Sending PING(ACK=0) for channel: {}", ctx.channel().id());
+            final Http2PingFrame newPingFrame = getNewPingFrame();
+            frameWriter.writePing(ctx, newPingFrame.ack(),
+                                  newPingFrame.content(),
+                                  ctx.newPromise().addListener(future -> {
+                                      logger.trace("Wrote PING(ACK=0) for channel: {}", ctx.channel().id());
+                                      pair.setRequestFrame(newPingFrame);
+                                  }));
+        }
+
+        private Http2PingFrame getNewPingFrame() {
+            return new DefaultHttp2PingFrame(random.nextLong());
+        }
     }
 }
+

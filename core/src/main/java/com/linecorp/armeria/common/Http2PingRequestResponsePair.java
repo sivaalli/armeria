@@ -14,11 +14,14 @@
  * under the License.
  */
 
-package com.linecorp.armeria.server;
+package com.linecorp.armeria.common;
+
+import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.base.Preconditions.checkState;
 
 import javax.annotation.Nullable;
-
-import com.google.common.base.Preconditions;
+import javax.annotation.concurrent.NotThreadSafe;
 
 import io.netty.handler.codec.http2.Http2PingFrame;
 
@@ -26,7 +29,8 @@ import io.netty.handler.codec.http2.Http2PingFrame;
  * This class represents a pair of PING request and response.
  * If a request is sent but response is not received then this is not complete.
  * If a response is received but ping payload does not match request payload then this is complete with error.
- */
+ */1
+@NotThreadSafe
 class Http2PingRequestResponsePair {
     @Nullable
     private Http2PingFrame requestFrame;
@@ -34,21 +38,21 @@ class Http2PingRequestResponsePair {
     private Http2PingFrame responseFrame;
 
     public void setRequestFrame(final Http2PingFrame requestFrame) {
-        Preconditions.checkNotNull(requestFrame, "requestFrame");
-        Preconditions.checkArgument(!requestFrame.ack(), "requestFrame should not have ACK set");
-        Preconditions.checkState(responseFrame != null, "Pending response for previous request");
+        checkNotNull(requestFrame, "requestFrame");
+        checkArgument(!requestFrame.ack(), "requestFrame should not have ACK set");
+        checkState(responseFrame == null, "Pending response for previous request");
 
         this.requestFrame = requestFrame;
     }
 
     public void setResponseFrame(final Http2PingFrame responseFrame) {
-        Preconditions.checkNotNull(responseFrame, "responseFrame");
-        Preconditions.checkArgument(responseFrame.ack(), "response should have ACK flag set");
-        Preconditions.checkState(requestFrame != null, "ACK received before request sent");
+        checkNotNull(responseFrame, "responseFrame");
+        checkArgument(responseFrame.ack(), "response should have ACK flag set");
+        checkState(requestFrame != null, "ACK received before request sent");
         this.responseFrame = responseFrame;
 
-        if (responseFrame.content() == requestFrame.content()) {
-            throw new RuntimeException("asd");
+        if (responseFrame.content() != requestFrame.content()) {
+            throw new RuntimeException("did not match");
         }
         reset();
     }
